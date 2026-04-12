@@ -1,0 +1,47 @@
+function [R, I, b] = gauss_jordan(A)
+    % R: matriz reduzida (forma escalonada reduzida)
+    % I: matriz identidade (se A for quadrada e inversível)
+    % b: última coluna (se for matriz aumentada)
+    
+    R = A;
+    [m, n] = size(R);
+    linha = 1;
+    
+    for col = 1:n
+        % Se já processou todas as linhas, sai
+        if linha > m
+            break;
+        end
+        
+        % Verifica se pivô é zero
+        if abs(R(linha, col)) < eps
+            error('Pivô zero encontrado. Algoritmo sem pivoteamento falhou.');
+        end
+        
+        % Escolhe o pivô
+        pivo = R(linha, col);
+        
+        % Normaliza a linha do pivô para que o pivô seja 1
+        for k = col:n
+            R(linha, k) = R(linha, k) / pivo;
+        end
+        
+        % Elimina nas outras linhas
+        for i = 1:m
+            if i ~= linha
+                fator = R(i, col);
+                for k = col:n
+                    R(i, k) = R(i, k) - fator * R(linha, k);
+                end
+            end
+        end
+        
+        linha = linha + 1;
+    end
+    
+    % Extrai a última coluna (vetor b)
+    b = R(:, n);
+    
+	I = R(:,n-1)
+    end
+end
