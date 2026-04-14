@@ -1,47 +1,28 @@
-function [R, I, b] = gauss_jordan(A)
-    % R: matriz reduzida (forma escalonada reduzida)
-    % I: parte correspondente a A (todas colunas exceto última)
-    % b: última coluna (se for matriz aumentada)
-    
-    R = A;
-    [m, n] = size(R);
-    linha = 1;
-    
-    for col = 1:n
-        % Se já processou todas as linhas, sai
-        if linha > m
-            break;
-        end
-        
-        % Verifica se pivô é zero
-        if abs(R(linha, col)) < eps
-            error('Pivô zero encontrado. Algoritmo sem pivoteamento falhou.');
-        end
-        
-        % Escolhe o pivô
-        pivo = R(linha, col);
-        
-        % Normaliza a linha do pivô para que o pivô seja 1
-        for k = col:n
-            R(linha, k) = R(linha, k) / pivo;
-        end
-        
-        % Elimina nas outras linhas
-        for i = 1:m
-            if i ~= linha
-                fator = R(i, col);
-                for k = col:n
-                    R(i, k) = R(i, k) - fator * R(linha, k);
-                end
-            end
-        end
-        
-        linha = linha + 1;
+function x = gauss_jordan(A, b)
+  n = length(b);
+  Aug = [A b];  % matriz aumentada
+
+  % Gauss–Jordan
+  for k = 1:n
+    % Verifica pivô
+    if Aug(k,k) == 0
+      error('Pivô zero encontrado. Necessário pivotamento.');
     end
-    
-    % Extrai a última coluna (vetor b)
-    b = R(:, n);
-    
-    % Extrai todas as colunas exceto a última (matriz I)
-    I = R(:, 1:n-1);
+
+    % Normaliza a linha do pivô
+    Aug(k, k:n+1) = Aug(k, k:n+1) / Aug(k, k);
+
+    % Elimina os elementos acima e abaixo do pivô
+    for i = 1:n
+      if i != k
+        fator = Aug(i, k);
+        Aug(i, k:n+1) = Aug(i, k:n+1) - fator * Aug(k, k:n+1);
+      end
+    end
+  end
+
+  % A solução está na última coluna
+  x = Aug(:, n+1);
+disp( Aug(:, n+1) );	
 end
+
