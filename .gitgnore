@@ -1,0 +1,8 @@
+__pycache__/
+build/
+*.exe
+*.dll
+.env
+.env.local
+.vscode/
+
