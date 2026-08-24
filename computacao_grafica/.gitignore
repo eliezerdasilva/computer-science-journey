@@ -1,0 +1,16 @@
+# Ambientes virtuais, bytecode e caches Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Saidas geradas por scripts das aulas (recriaveis rodando o script)
+aulas/**/triangulo_gpu.png
+
+# macOS / editores
+.DS_Store
+.vscode/
+.idea/
+*.swp

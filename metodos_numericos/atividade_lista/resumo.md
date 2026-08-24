@@ -56,3 +56,6 @@ Lik= (1/Ukk )*(Aik−∑ de p=1 ate k−1 Lip⋅Upk)
 
 Se Ukk=0Ukk​=0, erro → matriz singular ou precisa pivotamento.
 
+* 4 Decomposicao PA=LU
+
+

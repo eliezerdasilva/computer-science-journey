@@ -26,7 +26,7 @@ def exemplo_circulo():
     resultado = circulo.calcular()
     
     # Plotar (opcional - descomente para ver o gráfico)
-    # plotar_figura(circulo, mostrar=True, salvar=True, nome_arquivo="circulo.png")
+    plotar_figura(circulo, mostrar=True, salvar=True, nome_arquivo="circulo.png")
 
 
 # ============================================================
@@ -99,7 +99,7 @@ def exemplo_curva():
     
     # Definir uma função: f(x) = x² (parábola)
     def f_quadrado(x):
-        return  -2*x*2  
+        return  x**2
     
     # Área sob x² de 0 a 2 = 8/3 ≈ 2.66667
     curva = FuncaoQualquer(f_quadrado, a=0, b=2, n_pontos=100_000_000)
