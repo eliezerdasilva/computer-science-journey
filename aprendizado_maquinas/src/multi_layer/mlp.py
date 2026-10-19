@@ -14,7 +14,7 @@ saída linear (para classificação binária com rótulos ±1, usamos sign na pr
 """
 import numpy as np
 import sys, os
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils import gerar_dados_classificacao, plot_hiperplano
 
 class MLP:
