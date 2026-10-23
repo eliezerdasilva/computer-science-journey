@@ -50,7 +50,7 @@ circulo_azul = pyglet.shapes.Circle(
     segments=36,
     batch=batch
 )
-
+# Parte C
 # Espiral
 cx, cy = 400, 300
 pontos = []
@@ -78,6 +78,7 @@ def on_key_press(simbolo, modificadores):
     if simbolo == pyglet.window.key.C:
         indice_cor = (indice_cor + 1) % len(cores_ciclo)
         circulo.color = cores_ciclo[indice_cor]
+
     elif simbolo == pyglet.window.key.RIGHT:
         quadrado.x += 20
     elif simbolo == pyglet.window.key.LEFT:

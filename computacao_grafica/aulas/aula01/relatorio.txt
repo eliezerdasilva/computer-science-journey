@@ -1,0 +1,35 @@
+Relatório.
+
+Parte A.
+
+Na questão 1, acredito que o resultado ficou conforme o que foi definido.
+
+Tecla Up sobre o quadrado.
+
+A origem está localizada no canto esquerdo inferior, sendo que x cresce para a direita e y cresce para cima.
+
+Parte B.
+
+Segments é o número de segmentos de reta utilizados para aproximar um círculo.
+
+Um círculo matematicamente perfeito possui infinitos pontos. Porém, computadores não conseguem desenhar uma quantidade infinita de pontos. Por isso, utilizamos uma aproximação.
+
+Parte C.
+
+Não há perguntas.
+
+Parte D.
+
+Como o exercício trata apenas da mudança da origem para o topo, somente o valor de Y será alterado. Por exemplo, caso y seja 50, ele começaria do topo. Como a origem do Pyglet está localizada na parte inferior, seria necessário calcular a altura total menos os 50 dessa nova origem.
+
+y_top = ALTURA - y
+print(f"Top-down: x={x}, y={y_top}")
+
+No exercício do ponto, caso seja clicado exatamente no mesmo ponto, o raio fica igual a 0. Nesse caso, nada é desenhado.
+
+Utilizei o LLM DeepSeek para grande parte das atividades e, para um problema que tive, utilizei o ChatGPT para desenvolver as atividades 01.
+
+No exemplo da espiral, pedi ao DeepSeek para realizar a implementação. Se não me engano, ele gerava os dois pontos e já chamava a função Line, mas, por algum motivo, ela não desenhava. Foi quando levei a questão para o ChatGPT, que implementou um array para salvar primeiro todos os pontos e, posteriormente, inserir a reta entre cada ponto, como está no pseudocódigo da atividade.
+
+O código está comentado, com cada ação.
+'
