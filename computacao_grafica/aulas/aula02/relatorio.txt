@@ -1,0 +1,7 @@
+Reaproveitei a estrutura do color_picker.py e transportei 
+para ela a lógica do meu código, organizando tudo em classes Slider e Button, com a sincronização centralizada na função atualizar().
+Uso de LLM
+
+Usei exclusivamente o DeepSeek, com prompts estruturados no padrão CRIE (contexto, requisitos, restrições e entrega). 
+O DeepSeek me auxiliou na proposta das classes e na adaptação do código ao molde do professor.
+
