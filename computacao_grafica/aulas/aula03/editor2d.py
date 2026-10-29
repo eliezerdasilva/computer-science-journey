@@ -13,7 +13,6 @@ Controles:
   Gerais:    Del=remover  I=info  H=cor  G=preenchimento  F1=recorte  Esc=sai
   Camera:    scroll=zoom  botao do meio=pan
 """
-
 import math
 
 import numpy as np
@@ -24,14 +23,20 @@ from pyglet import shapes
 from pyglet.window import key, mouse
 from pyglet import gl
 
+from abaRecursos import Sidebar, SIDEBAR_LARGURA   # NOVO
+
 
 # ======================================================================
 # BLOCO 1 — JANELA E BATCH
 # ======================================================================
-LARGURA, ALTURA = 1000, 900
+LARGURA, ALTURA = 900, 600                      # janela um pouco mais larga
 janela = pyglet.window.Window(LARGURA, ALTURA, caption="Editor 2D — M3")
-pyglet.gl.glClearColor(1.0, 1.0, 1.0, 1.0)   # branco
+pyglet.gl.glClearColor(0, 0, 0, 1)
 batch = pyglet.graphics.Batch()
+
+# area do mundo = janela MENOS sidebar
+MUNDO_X0 = SIDEBAR_LARGURA
+MUNDO_LARGURA = LARGURA - SIDEBAR_LARGURA
 
 
 
@@ -79,27 +84,33 @@ def aplicar_matriz_em_pontos(pontos, matriz):
 # BLOCO 3 — CAMERA (window <-> viewport)
 # window_centro/half descrevem a regiao do MUNDO visivel.
 # ======================================================================
-window_centro = np.array([LARGURA / 2, ALTURA / 2], dtype=float)
-window_half = np.array([LARGURA / 2, ALTURA / 2], dtype=float)
+# ======================================================================
+# BLOCO 3 — CAMERA (window <-> viewport)
+# window_centro/half descrevem a regiao do MUNDO visivel.
+# O viewport do mundo e a area da tela a DIREITA da sidebar.
+# ======================================================================
+window_centro = np.array([MUNDO_LARGURA / 2, ALTURA / 2], dtype=float)
+window_half = np.array([MUNDO_LARGURA / 2, ALTURA / 2], dtype=float)
 ZOOM_MIN, ZOOM_MAX = 0.1, 10.0
 
 
 def matriz_mundo_para_tela():
-    """Mundo -> pixel: T(centro_tela) @ S(escala) @ T(-centro_window)."""
-    sx = LARGURA / (2 * window_half[0])
-    sy = ALTURA / (2 * window_half[1])
+    """Mundo -> pixel, mapeando para a area do mundo (a direita da sidebar)."""
+    sx = MUNDO_LARGURA / (2 * window_half[0])
+    sy = ALTURA        / (2 * window_half[1])
     cx, cy = window_centro
-    return (matriz_translacao(LARGURA / 2, ALTURA / 2) @
+    # centro do viewport do mundo = (MUNDO_X0 + MUNDO_LARGURA/2, ALTURA/2)
+    return (matriz_translacao(MUNDO_X0 + MUNDO_LARGURA / 2, ALTURA / 2) @
             matriz_escala(sx, sy) @
             matriz_translacao(-cx, -cy))
 
 
 def converter_tela_para_mundo(x_px, y_px):
     """Inversa: pixel -> mundo (para picking e criacao)."""
-    sx = LARGURA / (2 * window_half[0])
-    sy = ALTURA / (2 * window_half[1])
+    sx = MUNDO_LARGURA / (2 * window_half[0])
+    sy = ALTURA        / (2 * window_half[1])
     cx, cy = window_centro
-    return ((x_px - LARGURA / 2) / sx + cx,
+    return ((x_px - MUNDO_X0 - MUNDO_LARGURA / 2) / sx + cx,
             (y_px - ALTURA / 2) / sy + cy)
 
 
@@ -343,6 +354,9 @@ class Objeto2D:
 # ======================================================================
 # BLOCO 7 — ESTADO GLOBAL DO EDITOR
 # ======================================================================
+# ======================================================================
+# BLOCO 7 — ESTADO GLOBAL DO EDITOR
+# ======================================================================
 objetos = []
 selecionados = []
 
@@ -350,32 +364,60 @@ MODO_CRIAR_POLIGONO = "criar_poligono"
 MODO_SELECIONAR = "selecionar"
 MODO_MOVER = "mover"
 MODO_CRIAR_SEGMENTO = "criar_segmento"
+# NOVO: ferramentas vindas da sidebar
+FERRAMENTA_RETANGULO = "retangulo"
+FERRAMENTA_CIRCULO   = "circulo"
+FERRAMENTA_TRIANGULO = "triangulo"
+FERRAMENTA_SEGMENTO  = "segmento"
+FERRAMENTA_POLIGONO  = "poligono"
+
+# --- NOVOS MODOS de manipulacao (sidebar) ---
+FERRAMENTA_GIRAR_ESQ  = "girar_esq"
+FERRAMENTA_GIRAR_DIR  = "girar_dir"
+FERRAMENTA_AUMENTAR   = "aumentar"
+FERRAMENTA_DIMINUIR   = "diminuir"
+FERRAMENTA_TRANSLADAR = "transladar"
+
+# --- buffers de criacao multi-clique ---
+retangulo_inicio = None    # 1o clique (pixel) do retangulo 2-cliques
+triangulo_pontos = []      # lista de (x, y) em pixel
+
 modo = MODO_SELECIONAR
 
-pontos_criacao = []       # pontos em PIXEL enquanto cria poligono
-segmento_inicio = None   # pixel do primeiro clique
-laco_inicio = None        # cantos do laco de selecao (pixel)
+# --- sidebar (novo) ---
+sidebar = Sidebar(ALTURA)
+
+# --- buffers de criacao (novo: "ferramenta pendente") ---
+# Quando o usuario clica numa ferramenta da sidebar, guardamos aqui.
+# O primeiro clique no mundo consome essa ferramenta.
+ferramenta_pendente = None    # None | "retangulo" | "circulo" | "triangulo" | "segmento" | "poligono"
+
+# --- estados de criacao ---
+pontos_criacao = []              # poligono nao convexo em PIXEL
+segmento_inicio = None           # 1o clique do segmento (em PIXEL)
+circulo_inicio = None            # 1o clique do circulo (em PIXEL)
+laco_inicio = None
 laco_fim = None
 
-ref_modo = 1              # 1=centro 2=canto bbox 3=ponto clicado
-ref_ponto = (0, 0)        # usado quando ref_modo == 3
+ref_modo = 1
+ref_ponto = (0, 0)
 
 PASSO_TRANS = 15
 PASSO_ROT = math.radians(10)
 FATOR_ESC = 1.1
 
-PALETA = [(240, 140, 40), (60, 180, 240), (120, 220, 120),
-          (230, 90, 120), (200, 160, 240)]
+# paleta agora vem da sidebar
+PALETA = [(240, 140, 40)]   # mantida para compat (nao usada quando ha sidebar)
 paleta_idx = 0
 
-shapes_list = []          # shapes pyglet reconstruidos a cada evento
-label_info = pyglet.text.Label("", x=8, y=ALTURA - 8, anchor_y='top',
-                               font_size=10, color=(0, 0, 0, 255))
-# Grade 
-GRADE_ESPACO = 50.0                       # 1 linha a cada 50 unidades de mundo
-GRADE_COR = (220, 220, 220)               # cinza claro
-GRADE_COR_EIXO = (180, 180, 180)          # cinza mais escuro para os eixos X=0 e Y=0
+shapes_list = []
+label_info = pyglet.text.Label("", x=SIDEBAR_LARGURA + 8, y=ALTURA - 8,
+                               anchor_y='top', font_size=10,
+                               color=(255, 255, 255, 255))
 
+GRADE_ESPACO = 50.0
+GRADE_COR = (80, 80, 80)
+GRADE_COR_EIXO = (0, 255, 0)
 # ======================================================================
 # BLOCO 8 — RENDERIZACAO
 # ======================================================================
@@ -578,6 +620,74 @@ def texto_status():
             f"| recorte={estado_recorte} | L=segmento H=cor G=fill I=info")
 
 
+# ======================================================================
+# BLOCO 8 — RENDERIZACAO
+# ======================================================================
+# ... (desenhar_objeto permanece igual) ...
+
+def desenhar_preview_criacao():
+    """Preview das ferramentas pendentes (2 cliques ou N cliques)."""
+    mx, my = janela._mouse_x, janela._mouse_y
+
+    # circulo: linha do centro ate o cursor
+    if ferramenta_pendente == "circulo" and circulo_inicio is not None:
+        shapes_list.append(shapes.Line(circulo_inicio[0], circulo_inicio[1],
+                                       mx, my, thickness=1,
+                                       color=(255, 255, 0), batch=batch))
+        shapes_list.append(shapes.Circle(mx, my, 3,
+                                         color=(255, 255, 0), batch=batch))
+
+    # segmento
+    if ferramenta_pendente == "segmento" and segmento_inicio is not None:
+        shapes_list.append(shapes.Line(segmento_inicio[0], segmento_inicio[1],
+                                       mx, my, thickness=1,
+                                       color=(255, 255, 0), batch=batch))
+
+    # retangulo: 1o canto fixo, 2o segue o cursor
+    if ferramenta_pendente == "retangulo" and retangulo_inicio is not None:
+        x0, y0 = retangulo_inicio
+        shapes_list.append(shapes.Line(x0, y0, mx, y0, thickness=1,
+                                       color=(255, 255, 0), batch=batch))
+        shapes_list.append(shapes.Line(mx, y0, mx, my, thickness=1,
+                                       color=(255, 255, 0), batch=batch))
+        shapes_list.append(shapes.Line(mx, my, x0, my, thickness=1,
+                                       color=(255, 255, 0), batch=batch))
+        shapes_list.append(shapes.Line(x0, my, x0, y0, thickness=1,
+                                       color=(255, 255, 0), batch=batch))
+
+    # triangulo: 2 pontos fixos + cursor formando o 3o
+    if ferramenta_pendente == "triangulo" and triangulo_pontos:
+        pts_preview = triangulo_pontos + [(mx, my)]
+        for i in range(len(pts_preview) - 1):
+            a = pts_preview[i]
+            b = pts_preview[i + 1]
+            shapes_list.append(shapes.Line(a[0], a[1], b[0], b[1],
+                                           thickness=1,
+                                           color=(255, 255, 0), batch=batch))
+        if len(triangulo_pontos) == 2:
+            a = triangulo_pontos[0]
+            shapes_list.append(shapes.Line(mx, my, a[0], a[1],
+                                           thickness=1,
+                                           color=(255, 255, 0), batch=batch))
+        for p in triangulo_pontos:
+            shapes_list.append(shapes.Circle(p[0], p[1], 3,
+                                             color=(255, 255, 255),
+                                             batch=batch))
+
+    # poligono (caminho antigo e sidebar)
+    if ferramenta_pendente == "poligono" and pontos_criacao:
+        for p in pontos_criacao:
+            shapes_list.append(shapes.Circle(p[0], p[1], 3,
+                                             color=(255, 255, 255),
+                                             batch=batch))
+        for i in range(len(pontos_criacao) - 1):
+            a = pontos_criacao[i]
+            b = pontos_criacao[i + 1]
+            shapes_list.append(shapes.Line(a[0], a[1], b[0], b[1],
+                                           thickness=1,
+                                           color=(255, 255, 0), batch=batch))
+
+
 def atualizar_tela():
     """Reconstroi todos os shapes (do zero) e o HUD."""
     global shapes_list
@@ -585,13 +695,16 @@ def atualizar_tela():
         shape.delete()
     shapes_list = []
 
-    desenhar_grade()            # <-- grade primeiro
+    desenhar_grade()
 
     for obj in objetos:
         desenhar_objeto(obj)
 
     desenhar_hud()
+    desenhar_preview_criacao()      # NOVO: previews de criacao
     desenhar_bbox_selecionados()
+
+    sidebar.desenhar(batch, shapes_list)   # NOVO: sidebar por cima do mundo
 
     label_info.text = texto_status()
 
@@ -622,63 +735,108 @@ def resolver_ponto_referencia(obj):
 # ======================================================================
 # BLOCO 10 — CRIACAO DE OBJETOS (todos no centro da window)
 # ======================================================================
-def criar_circulo_no_centro():
+# ======================================================================
+# BLOCO 10 — CRIACAO DE OBJETOS
+# ======================================================================
+def criar_circulo_por_centro_e_raio(centro_mundo, ponto_borda_mundo):
+    """Cria circulo a partir de centro + ponto na borda (raio = distancia)."""
     global modo
-    cx, cy = window_centro
-    obj = Objeto2D([], PALETA[paleta_idx], tipo="circulo")
-    obj.circulo = {"centro": (0.0, 0.0), "raio": 40.0}
+    r = math.hypot(ponto_borda_mundo[0] - centro_mundo[0],
+                   ponto_borda_mundo[1] - centro_mundo[1])
+    if r < 1e-6:
+        return
+    obj = Objeto2D([], sidebar.cor_atual(), tipo="circulo")
+    obj.circulo = {"centro": (0.0, 0.0), "raio": r}
+    obj.matriz = matriz_translacao(centro_mundo[0], centro_mundo[1])
+    objetos.append(obj)
+    modo = MODO_SELECIONAR
+    sidebar.resetar_ferramenta()       # <-- ADICIONAR
+
+    atualizar_tela()
+
+
+def criar_retangulo_em(ponto_mundo):
+    """Retangulo 100x60 centrado no ponto clicado."""
+    global modo
+    locais = [(-50, -30), (50, -30), (50, 30), (-50, 30)]
+    obj = Objeto2D(locais, sidebar.cor_atual(), tipo="retangulo")
+    obj.matriz = matriz_translacao(ponto_mundo[0], ponto_mundo[1])
+    objetos.append(obj)
+    modo = MODO_SELECIONAR
+    sidebar.resetar_ferramenta()       # <-- ADICIONAR
+    atualizar_tela()
+def criar_retangulo_2cliques(p1_pixel, p2_pixel):
+    """Retangulo delimitado por 2 cantos dados em PIXEL."""
+    global modo
+    a = converter_tela_para_mundo(*p1_pixel)
+    b = converter_tela_para_mundo(*p2_pixel)
+    xmin, xmax = min(a[0], b[0]), max(a[0], b[0])
+    ymin, ymax = min(a[1], b[1]), max(a[1], b[1])
+    cx, cy = (xmin + xmax) / 2, (ymin + ymax) / 2
+    locais = [(xmin - cx, ymin - cy), (xmax - cx, ymin - cy),
+              (xmax - cx, ymax - cy), (xmin - cx, ymax - cy)]
+    obj = Objeto2D(locais, sidebar.cor_atual(), tipo="retangulo")
     obj.matriz = matriz_translacao(cx, cy)
     objetos.append(obj)
     modo = MODO_SELECIONAR
+    sidebar.resetar_ferramenta()       # <-- desliga o azul do botao
     atualizar_tela()
 
-def criar_segmento(inicio_mundo, fim_mundo):
-    """Cria um segmento entre dois pontos em MUNDO (armazena local + matriz)."""
+
+def criar_triangulo_3cliques(pontos_pixel):
+    """Triangulo a partir de 3 vertices dados em PIXEL."""
     global modo
-    # centroide do segmento como origem local
+    pts_mundo = [converter_tela_para_mundo(x, y) for (x, y) in pontos_pixel]
+    cx = sum(p[0] for p in pts_mundo) / 3
+    cy = sum(p[1] for p in pts_mundo) / 3
+    locais = [(x - cx, y - cy) for (x, y) in pts_mundo]
+    obj = Objeto2D(locais, sidebar.cor_atual(), tipo="triangulo")
+    obj.matriz = matriz_translacao(cx, cy)
+    objetos.append(obj)
+    modo = MODO_SELECIONAR
+    sidebar.resetar_ferramenta()       # <-- ADICIONAR
+    sidebar.resetar_ferramenta()
+    atualizar_tela()
+
+def criar_triangulo_em(ponto_mundo):
+    """Triangulo centrado no ponto clicado."""
+    global modo
+    locais = [(-50, -30), (50, -30), (0, 50)]
+    obj = Objeto2D(locais, sidebar.cor_atual(), tipo="triangulo")
+    obj.matriz = matriz_translacao(ponto_mundo[0], ponto_mundo[1])
+    objetos.append(obj)
+    sidebar.resetar_ferramenta()       # <-- ADICIONAR
+    modo = MODO_SELECIONAR
+    atualizar_tela()
+
+
+def criar_segmento(inicio_mundo, fim_mundo):
+    """Cria um segmento entre dois pontos em MUNDO."""
+    global modo
     cx = (inicio_mundo[0] + fim_mundo[0]) / 2
     cy = (inicio_mundo[1] + fim_mundo[1]) / 2
     locais = [
         (inicio_mundo[0] - cx, inicio_mundo[1] - cy),
         (fim_mundo[0] - cx,    fim_mundo[1] - cy),
     ]
-    obj = Objeto2D(locais, PALETA[paleta_idx], tipo="segmento")
+    obj = Objeto2D(locais, sidebar.cor_atual(), tipo="segmento")
     obj.matriz = matriz_translacao(cx, cy)
     objetos.append(obj)
-    modo = MODO_SELECIONAR
-    atualizar_tela()
-
-def criar_triangulo_no_centro():
-    global modo
-    locais = [(-50, -30), (50, -30), (0, 50)]
-    cx, cy = window_centro
-    obj = Objeto2D(locais, PALETA[paleta_idx], tipo="triangulo")
-    obj.matriz = matriz_translacao(cx, cy)
-    objetos.append(obj)
-    modo = MODO_SELECIONAR
-    atualizar_tela()
-
-
-def criar_retangulo_no_centro():
-    global modo
-    locais = [(-50, -30), (50, -30), (50, 30), (-50, 30)]
-    cx, cy = window_centro
-    obj = Objeto2D(locais, PALETA[paleta_idx], tipo="retangulo")
-    obj.matriz = matriz_translacao(cx, cy)
-    objetos.append(obj)
+    sidebar.resetar_ferramenta()       # <-- ADICIONAR
     modo = MODO_SELECIONAR
     atualizar_tela()
 
 
 def finalizar_criacao_poligono():
     """Fecha o poligono: converte pontos de pixel para mundo e normaliza."""
-    global pontos_criacao, modo
+    global pontos_criacao, modo,ferramenta_pendente
     if len(pontos_criacao) >= 3:
-        pts_mundo = [converter_tela_para_mundo(x, y) for (x, y) in pontos_criacao]
+        pts_mundo = [converter_tela_para_mundo(x, y)
+                     for (x, y) in pontos_criacao]
         cx = sum(p[0] for p in pts_mundo) / len(pts_mundo)
         cy = sum(p[1] for p in pts_mundo) / len(pts_mundo)
         locais = [(x - cx, y - cy) for (x, y) in pts_mundo]
-        obj = Objeto2D(locais, PALETA[paleta_idx], tipo="poligono")
+        obj = Objeto2D(locais, sidebar.cor_atual(), tipo="poligono")
         obj.matriz = matriz_translacao(cx, cy)
         objetos.append(obj)
     pontos_criacao = []
@@ -689,25 +847,149 @@ def finalizar_criacao_poligono():
 # ======================================================================
 # BLOCO 11 — EVENTOS DE MOUSE
 # ======================================================================
+# ======================================================================
+# BLOCO 11 — EVENTOS DE MOUSE
+# ======================================================================
 @janela.event
 def on_mouse_press(x, y, button, modifiers):
-    global modo, laco_inicio, laco_fim, ref_ponto, selecionados, segmento_inicio
-    wx, wy = converter_tela_para_mundo(x, y)
+    global modo, laco_inicio, laco_fim, ref_ponto, selecionados
+    global segmento_inicio, circulo_inicio, ferramenta_pendente, pontos_criacao
+    global retangulo_inicio, triangulo_pontos
 
-    # --- pan (botao do meio) ---
+    # --- 1) SIDEBAR tem prioridade ---
+    if button == mouse.LEFT and x < SIDEBAR_LARGURA:
+        evento = sidebar.processar_clique(x, y)
+        if evento is not None:
+            tipo_evento, valor = evento
+            if tipo_evento == "ferramenta":
+                if valor == "selecionar":
+                    modo = MODO_SELECIONAR
+                    ferramenta_pendente = None
+                else:
+                    # qualquer ferramenta da sidebar ativa "pendente"
+                    ferramenta_pendente = valor
+                # zera buffers de criacao ao trocar de ferramenta
+                pontos_criacao = []
+                segmento_inicio = None
+                circulo_inicio = None
+                retangulo_inicio = None
+                triangulo_pontos = []
+            atualizar_tela()
+            return
+        return
+
+    # --- 2) PAN (botao do meio) ---
     if button == mouse.MIDDLE:
         janela._pan_ant = (x, y)
         return
 
-    # --- criacao de poligono ---
+    # --- 3) NOVA DINAMICA: ferramenta pendente consome o clique no mundo ---
+       # --- 3) FERRAMENTA PENDENTE consome o clique no mundo ---
+    if button == mouse.LEFT and ferramenta_pendente is not None:
+        wx, wy = converter_tela_para_mundo(x, y)
+
+        # --- botoes de manipulacao (nao criam, agem sobre selecionados) ---
+        if ferramenta_pendente == "girar_esq":
+            aplicar_matriz_nos_selecionados(matriz_rotacao(+PASSO_ROT))
+            sidebar.resetar_ferramenta()
+            ferramenta_pendente = None
+            atualizar_tela()
+            return
+        if ferramenta_pendente == "girar_dir":
+            aplicar_matriz_nos_selecionados(matriz_rotacao(-PASSO_ROT))
+            sidebar.resetar_ferramenta()
+            ferramenta_pendente = None
+            atualizar_tela()
+            return
+        if ferramenta_pendente == "aumentar":
+            aplicar_matriz_nos_selecionados(
+                matriz_escala(FATOR_ESC, FATOR_ESC))
+            sidebar.resetar_ferramenta()
+            ferramenta_pendente = None
+            atualizar_tela()
+            return
+        if ferramenta_pendente == "diminuir":
+            aplicar_matriz_nos_selecionados(
+                matriz_escala(1/FATOR_ESC, 1/FATOR_ESC))
+            sidebar.resetar_ferramenta()
+            ferramenta_pendente = None
+            atualizar_tela()
+            return
+        if ferramenta_pendente == "transladar":
+            # transladar segue o cursor enquanto arrasta; usa 1 clique simples
+            # como translação de PASSO_TRANS na direcao do clique em relacao
+            # ao centro dos selecionados
+            if selecionados:
+                cxs = sum(o.obter_centro_mundo()[0] for o in selecionados) / len(selecionados)
+                cys = sum(o.obter_centro_mundo()[1] for o in selecionados) / len(selecionados)
+                dx = wx - cxs
+                dy = wy - cys
+                aplicar_matriz_nos_selecionados(matriz_translacao(dx, dy))
+            sidebar.resetar_ferramenta()
+            ferramenta_pendente = None
+            atualizar_tela()
+            return
+
+        # --- retangulo: 2 cliques (extremos) ---
+        if ferramenta_pendente == "retangulo":
+            if retangulo_inicio is None:
+                retangulo_inicio = (x, y)
+            else:
+                criar_retangulo_2cliques(retangulo_inicio, (x, y))
+                retangulo_inicio = None
+                ferramenta_pendente = None
+            atualizar_tela()
+            return
+
+        # --- triangulo: 3 cliques ---
+        if ferramenta_pendente == "triangulo":
+            triangulo_pontos.append((x, y))
+            if len(triangulo_pontos) == 3:
+                criar_triangulo_3cliques(triangulo_pontos)
+                triangulo_pontos = []
+                ferramenta_pendente = None
+            atualizar_tela()
+            return
+
+        # --- circulo: 2 cliques (centro + borda) ---
+        if ferramenta_pendente == "circulo":
+            if circulo_inicio is None:
+                circulo_inicio = (x, y)
+            else:
+                centro_mundo = converter_tela_para_mundo(*circulo_inicio)
+                criar_circulo_por_centro_e_raio(centro_mundo, (wx, wy))
+                circulo_inicio = None
+                ferramenta_pendente = None
+            atualizar_tela()
+            return
+
+        # --- segmento: 2 cliques ---
+        if ferramenta_pendente == "segmento":
+            if segmento_inicio is None:
+                segmento_inicio = (x, y)
+            else:
+                inicio_mundo = converter_tela_para_mundo(*segmento_inicio)
+                criar_segmento(inicio_mundo, (wx, wy))
+                segmento_inicio = None
+                ferramenta_pendente = None
+            atualizar_tela()
+            return
+
+        # --- poligono: N cliques + Enter ---
+        if ferramenta_pendente == "poligono":
+            pontos_criacao.append((x, y))
+            atualizar_tela()
+            return
+
+    # --- 4) Comportamento antigo (modo do teclado) ---
     if modo == MODO_CRIAR_POLIGONO and button == mouse.LEFT:
         pontos_criacao.append((x, y))
         atualizar_tela()
         return
-        # --- criacao de segmento (2 cliques) ---
+
     if modo == MODO_CRIAR_SEGMENTO and button == mouse.LEFT:
         if segmento_inicio is None:
-            segmento_inicio = (x, y)     # guarda em PIXEL
+            segmento_inicio = (x, y)
         else:
             inicio_mundo = converter_tela_para_mundo(*segmento_inicio)
             fim_mundo = converter_tela_para_mundo(x, y)
@@ -715,9 +997,9 @@ def on_mouse_press(x, y, button, modifiers):
             segmento_inicio = None
         atualizar_tela()
         return
-    
-    # --- selecao ---
+
     if modo == MODO_SELECIONAR and button == mouse.LEFT:
+        wx, wy = converter_tela_para_mundo(x, y)
         alvo = None
         for obj in reversed(objetos):
             if obj.contem_ponto(wx, wy):
@@ -740,10 +1022,9 @@ def on_mouse_press(x, y, button, modifiers):
         atualizar_tela()
         return
 
-    # --- mover: grava referencia se ref_modo==3 ---
     if modo == MODO_MOVER and button == mouse.LEFT and ref_modo == 3:
+        wx, wy = converter_tela_para_mundo(x, y)
         ref_ponto = (wx, wy)
-
 
 @janela.event
 def on_mouse_drag(x, y, dx, dy, button, modifiers):
@@ -814,7 +1095,8 @@ def on_mouse_motion(x, y, dx, dy):
 @janela.event
 def on_key_press(simbolo, modifiers):
     global modo, pontos_criacao, selecionados, segmento_inicio
-    global ref_modo, recorte_ativo, paleta_idx
+    global ref_modo, recorte_ativo, paleta_idx, ferramenta_pendente
+    global triangulo_pontos, retangulo_inicio, circulo_inicio
 
     K = key
 
@@ -844,8 +1126,24 @@ def on_key_press(simbolo, modifiers):
         atualizar_tela()
         return
     # --- fechar poligono em criacao ---
-    if modo == MODO_CRIAR_POLIGONO and simbolo == K.ENTER:
-        finalizar_criacao_poligono(); return
+    # --- fechar poligono em criacao (teclado OU sidebar) ---
+    # --- Enter: fecha poligono OU triangulo (se 3 pontos ja foram dados) ---
+    if simbolo == K.ENTER:
+        if ferramenta_pendente == "poligono" and len(pontos_criacao) >= 3:
+            finalizar_criacao_poligono()
+            ferramenta_pendente = None
+            sidebar.resetar_ferramenta()
+            return
+        if ferramenta_pendente == "triangulo" and len(triangulo_pontos) == 3:
+            criar_triangulo_3cliques(triangulo_pontos)
+            triangulo_pontos = []
+            ferramenta_pendente = None
+            return
+        if modo == MODO_CRIAR_POLIGONO and len(pontos_criacao) >= 3:
+            finalizar_criacao_poligono()
+            return
+
+   
 
     # --- referencia de rotacao/escala ---
     if simbolo in (K._1, K._2, K._3):
@@ -925,16 +1223,25 @@ def on_key_press(simbolo, modifiers):
         atualizar_tela()
         return
 
+     # --- Esc: cancela criacao em andamento ---
     if simbolo == K.ESCAPE:
-        janela.close()
-
+                ferramenta_pendente = None
+                pontos_criacao = []
+                segmento_inicio = None
+                circulo_inicio = None
+                retangulo_inicio = None
+                triangulo_pontos = []
+                sidebar.resetar_ferramenta()
+                modo = MODO_SELECIONAR
+                atualizar_tela()
+                return
 
 # ======================================================================
 # BLOCO 13 — DRAW E MAIN
 # ======================================================================
 @janela.event
 def on_draw():
-    janela.clear()   # fundo branco configurado no Bloco 2 abaixo
+    janela.clear()
     batch.draw()
     label_info.draw()
 
