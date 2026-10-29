@@ -9,3 +9,11 @@ script simples e comentado — para **ler, prever, rodar e modificar**.
 Stack: **pyglet** (módulos interativos) + **numpy** (rasterizador em software, nos
 módulos de 3D); OpenGL de GPU só no fim do curso. Cada pasta tem seu
 `requirements.txt` (uso via `pip` num `venv`).
+
+
+# Como rodar
+
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python editor2d.py
