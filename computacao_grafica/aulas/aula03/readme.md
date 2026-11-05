@@ -123,7 +123,6 @@ O abaRecursos.py implementa a barra lateral de ferramentas, desenhada em pixels 
 
 ---
 
-## Seções extras (opcionais) — prontas para colar
 
 ### Autores
 
