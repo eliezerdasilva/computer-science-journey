@@ -1,0 +1,48 @@
+No passo zero é descrito para prever o comportamento da seguite acao, rotacionar 10 graus e transladar 15 px, e fazer o oposto transladar e depois rotacionar. 
+multiplicação de matrizes não é comutativa (A·B ≠ B·A em geral).
+Multiplicar por T à esquerda ou à direita muda em qual coluna a translação cai — e, portanto, em qual eixo ela atua.
+
+Umas das principais praticas na materia de computacao grafica foi o uso de LLM, separei um tempo para tentar fazer prompts melhores. 
+Acabei chegando em uma pratica que se chama Framework CRIE. 
+O CRIE é um framework de engenharia de prompts estruturado em quatro componentes: Context (contexto), Role (papel), Instructions (instruções) e Examples (exemplos). 
+
+Alem do prompt, submeti o arquivo editor2d e os requisitos pedidos. 
+
+Meu prompt:
+Contexto: Estou cursando uma disciplina de computação grafica, que tem como avaliacao projetos. Preciso desenvolver um editor 2D interativo em python. 
+
+
+Requisitos principal: Desenvolva um projeto de editor 2D em python, apartir do arquivo editor2d.py, fornecido no anexo, e depois implementea as funcionalidade de desenhar,selecionar e manipular objetos gráficos 2D, com transformações geométricas por matrizes homo-gêneas, transformação entre sistemas de coordenadas (window ↔ viewport), recorte e recursos de visualização (zoom, pan).
+
+No arquivo Requisitos.txt  esta o passo a passo dos requisitos mas detalhados, quero que siga somente oque se pede para implementar, e no codigo quero que coloque qual é o passo que esta sendo usado. 
+
+
+Restrinções: Utilize pyglet, o ambiente venv. Deixe a estrutura bem definida e separada por cada função. 
+
+Entrega: Alem do codigo em si, quero que faca um readme explicando as funcionalidade e como foi implementado. Quero que faca pequenos comentarios de no maximo duas linha explicando, alguma funcão importante no codigo.
+
+Com esse prompt, ele consegiu desenvolver quase todo projeto. Tive que consertar alguns bugs, um deles estava dando divisao por zero, no qual o programa fechava. 
+Outro era sobre bounding box, que não acompanhava o poligono. 
+
+A parte que mais travei foi e a mais demorada, foi o pos desenvolvimento, era debugar e entender o codigo.
+A parte das matrizes elementares, as funcoes para deteccao de tecla e a deficao dos objetos foi mais tranquilo,
+mas a parte que  manipulado e gerencia todos os objetos, funcoes de geometria como para ver se ponto esta dentro do poligono.
+e o recorte foram mais dificil. 
+
+O codigo foi construido em 13 camadas. 
+Bloco 1. Definicoes da janela
+Bloco 2. Definicoes das matrizes homogeneas
+Bloco 3. Definine o mundo e oque é visto. 
+Bloco 4. Funcoes de utilidades geometricas(ponto dentro do poligono)
+Bloco 5. Nessa sessao é definido o recorte da tela. Foi usado um algoritmos chamados de
+Cohen-Sutherland (para segmentos) e Sutherland-Hodgman (para polígonos).
+Bloco 6. Criacao do objeto 
+Bloco 7. Criacao de constantes e outras definicoes 
+Bloco 8. Renderizacao do objeto, do hud, do box do selecionar ...
+Bloco 9. Manipulacao dos selcionados
+Bloco 10. Criacao dos objetos, retamgulo, circulo.. 
+Bloco 11. Eventos Mouse
+Bloco 12. Eventos teclado. 
+Bloco 13. Main
+
+Das minhas alteracoes coloquei um fundo em formato de grade. 
