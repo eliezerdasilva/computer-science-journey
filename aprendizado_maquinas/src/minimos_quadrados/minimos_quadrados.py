@@ -20,7 +20,9 @@ import matplotlib.pyplot as plt
 
 
 URL_AUTO_MPG = "https://raw.githubusercontent.com/plotly/datasets/master/auto-mpg.csv"
-CSV_LOCAL    = "auto-mpg.csv"
+
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_LOCAL   = os.path.join(_SCRIPT_DIR, "auto-mpg.csv")
 
 
 def carregar_auto_mpg(caminho_local=CSV_LOCAL, url=URL_AUTO_MPG):
