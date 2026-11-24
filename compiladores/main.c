@@ -18,27 +18,33 @@ int main(int argc, char **argv) {
         else if (strcmp(argv[i], "--no-run") == 0) opt_no_run = 1;
         else arq = argv[i];
     }
-    if (!arq) {
-        fprintf(stderr, "Uso: %s [--ast] [--no-run] arquivo.dsl\n", argv[0]);
-        return 1;
-    }
+    if (!arq) { fprintf(stderr, "Uso: %s [--ast] [--no-run] arquivo.dsl\n", argv[0]); return 1; }
     yyin = fopen(arq, "r");
     if (!yyin) { perror("fopen"); return 1; }
 
     if (yyparse() != 0 || tem_erro) {
         fprintf(stderr, "Falha na análise sintática.\n");
+        fclose(yyin);
         return 1;
     }
+    fclose(yyin);
+
     if (!raiz) { fprintf(stderr, "AST vazia.\n"); return 1; }
     if (opt_ast) ast_imprime(raiz, 0);
 
     if (!analisa_semantica(raiz)) {
         fprintf(stderr, "Falha na análise semântica.\n");
+        ast_libera(raiz);
         return 1;
     }
 
-    if (opt_no_run) { printf("Análise concluída (--no-run).\n"); return 0; }
+    if (opt_no_run) {
+        printf("Análise concluída (--no-run).\n");
+        ast_libera(raiz);
+        return 0;
+    }
 
-    if (!executar_programa(raiz)) return 1;
-    return 0;
+    int ok = executar_programa(raiz);
+    ast_libera(raiz);
+    return ok ? 0 : 1;
 }

@@ -94,7 +94,8 @@ extern int yydebug;
     IDENT = 289,                   /* IDENT  */
     STRING = 290,                  /* STRING  */
     COR = 291,                     /* COR  */
-    NUM = 292                      /* NUM  */
+    NUM = 292,                     /* NUM  */
+    UMINUS = 293                   /* UMINUS  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -109,7 +110,7 @@ union YYSTYPE
     char *str;
     AstNode *node;
 
-#line 113 "parser.tab.h"
+#line 114 "parser.tab.h"
 
 };
 typedef union YYSTYPE YYSTYPE;

@@ -39,88 +39,102 @@ int tem_erro = 0;
 %nonassoc EQ NE LT GT LE GE
 %left '+' '-'
 %left '*' '/' '%'
+%right UMINUS
 
 %%
 programa:
-    lista_cmds              { raiz = ast_novo(AST_PROGRAMA, 1); raiz->u.programa.n = $1->u.bloco.n;
-                              memcpy(raiz->u.programa.itens, $1->u.bloco.itens, sizeof(AstNode*)*$1->u.bloco.n); $$ = raiz; }
+    lista_cmds  {
+        raiz = ast_novo(AST_PROGRAMA, $1->u.bloco.n ? $1->u.bloco.n : 1);
+        raiz->u.programa.n = $1->u.bloco.n;
+        for (int i = 0; i < $1->u.bloco.n; i++)
+            raiz->u.programa.itens[i] = $1->u.bloco.itens[i];
+        /* libera só o bloco temporário, mantém os filhos */
+        free($1->u.bloco.itens);
+        free($1);
+        $$ = raiz;
+    }
   ;
 
 lista_cmds:
-    /* vazio */             { $$ = ast_novo(AST_BLOCO, 0); }
-  | lista_cmds cmd          { AstNode *b = $1; b->u.bloco.itens[b->u.bloco.n++] = $2; $$ = b; }
+    /* vazio */             { $$ = ast_novo(AST_BLOCO, 4); }
+  | lista_cmds cmd          { ast_bloco_push($1, $2); $$ = $1; }
   ;
 
 cmd:
     desenho ';'             { $$ = $1; }
   | controle                { $$ = $1; }
   | animacao                { $$ = $1; }
-  | VAR IDENT ATRIB expressao ';'   { AstNode *n = ast_novo(AST_VAR, linha_atual);
-                                       n->u.var.nome = $2; n->u.var.expr = $4; $$ = n; }
-  | IDENT ATRIB expressao ';'       { AstNode *n = ast_novo(AST_ATRIBUICAO, linha_atual);
-                                       n->u.atrib.nome = $1; n->u.atrib.expr = $3; $$ = n; }
+  | VAR IDENT ATRIB expressao ';'
+        { AstNode *n = ast_novo(AST_VAR, 0); n->linha = linha_atual;
+          n->u.var.nome = $2; n->u.var.expr = $4; $$ = n; }
+  | IDENT ATRIB expressao ';'
+        { AstNode *n = ast_novo(AST_ATRIBUICAO, 0); n->linha = linha_atual;
+          n->u.atrib.nome = $1; n->u.atrib.expr = $3; $$ = n; }
   ;
 
 desenho:
     TELA expressao ',' expressao ',' COR
-        { AstNode *n = ast_novo(AST_TELA, linha_atual);
-          n->u.tela.w = $2; n->u.tela.h = $4; n->u.tela.cor = ast_cor($6, linha_atual); $$ = n; }
+        { AstNode *n = ast_novo(AST_TELA, 0); n->linha = linha_atual;
+          n->u.tela.w = $2; n->u.tela.h = $4;
+          n->u.tela.cor = (int)ast_cor($6, linha_atual)->u.num; $$ = n; }
   | PIXEL expressao ',' expressao ',' COR
-        { AstNode *n = ast_novo(AST_PIXEL, linha_atual);
-          n->u.pixel.x = $2; n->u.pixel.y = $4; n->u.pixel.cor = ast_cor($6, linha_atual); $$ = n; }
+        { AstNode *n = ast_novo(AST_PIXEL, 0); n->linha = linha_atual;
+          n->u.pixel.x = $2; n->u.pixel.y = $4;
+          n->u.pixel.cor = (int)ast_cor($6, linha_atual)->u.num; $$ = n; }
   | LINHA expressao ',' expressao ',' expressao ',' expressao ',' COR
-        { AstNode *n = ast_novo(AST_LINHA, linha_atual);
+        { AstNode *n = ast_novo(AST_LINHA, 0); n->linha = linha_atual;
           n->u.linha.x1=$2; n->u.linha.y1=$4; n->u.linha.x2=$6; n->u.linha.y2=$8;
-          n->u.linha.cor = ast_cor($10, linha_atual); $$ = n; }
+          n->u.linha.cor = (int)ast_cor($10, linha_atual)->u.num; $$ = n; }
   | RETANGULO expressao ',' expressao ',' expressao ',' expressao ',' COR
-        { AstNode *n = ast_novo(AST_RETANGULO, linha_atual);
+        { AstNode *n = ast_novo(AST_RETANGULO, 0); n->linha = linha_atual;
           n->u.retangulo.x=$2; n->u.retangulo.y=$4; n->u.retangulo.w=$6; n->u.retangulo.h=$8;
-          n->u.retangulo.cor = ast_cor($10, linha_atual); $$ = n; }
+          n->u.retangulo.cor = (int)ast_cor($10, linha_atual)->u.num; $$ = n; }
   | CIRCULO expressao ',' expressao ',' expressao ',' COR
-        { AstNode *n = ast_novo(AST_CIRCULO, linha_atual);
+        { AstNode *n = ast_novo(AST_CIRCULO, 0); n->linha = linha_atual;
           n->u.circulo.cx=$2; n->u.circulo.cy=$4; n->u.circulo.r=$6;
-          n->u.circulo.cor = ast_cor($8, linha_atual); $$ = n; }
+          n->u.circulo.cor = (int)ast_cor($8, linha_atual)->u.num; $$ = n; }
   | TEXTO STRING EM expressao ',' expressao ',' COR
-        { AstNode *n = ast_novo(AST_TEXTO, linha_atual);
+        { AstNode *n = ast_novo(AST_TEXTO, 0); n->linha = linha_atual;
           n->u.texto.texto = $2; n->u.texto.x = $4; n->u.texto.y = $6;
-          n->u.texto.cor = ast_cor($8, linha_atual); $$ = n; }
+          n->u.texto.cor = (int)ast_cor($8, linha_atual)->u.num; $$ = n; }
   | COR_FUNDO COR
-        { AstNode *n = ast_novo(AST_COR_FUNDO, linha_atual);
-          n->u.cor_fundo.cor = ast_cor($2, linha_atual); $$ = n; }
+        { AstNode *n = ast_novo(AST_COR_FUNDO, 0); n->linha = linha_atual;
+          n->u.cor_fundo.cor = (int)ast_cor($2, linha_atual)->u.num; $$ = n; }
   | SALVA STRING
-    { AstNode *n = ast_novo(AST_SALVA, linha_atual);
-      n->u.salva.arquivo = $2; $$ = n; }
+        { AstNode *n = ast_novo(AST_SALVA, 0); n->linha = linha_atual;
+          n->u.salva.arquivo = $2; $$ = n; }
   ;
 
 controle:
     SE expressao lista_cmds FIM
-        { AstNode *n = ast_novo(AST_SE, linha_atual);
+        { AstNode *n = ast_novo(AST_SE, 0); n->linha = linha_atual;
           n->u.se.cond = $2; n->u.se.entao = $3; n->u.se.senao = NULL; $$ = n; }
   | SE expressao lista_cmds SENAO lista_cmds FIM
-        { AstNode *n = ast_novo(AST_SE, linha_atual);
+        { AstNode *n = ast_novo(AST_SE, 0); n->linha = linha_atual;
           n->u.se.cond = $2; n->u.se.entao = $3; n->u.se.senao = $5; $$ = n; }
   | REPETE expressao VEZES lista_cmds FIM
-        { AstNode *n = ast_novo(AST_REPETE, linha_atual);
+        { AstNode *n = ast_novo(AST_REPETE, 0); n->linha = linha_atual;
           n->u.repete.vezes = $2; n->u.repete.corpo = $4; $$ = n; }
   ;
 
 animacao:
     ANIMA FPS NUM ';'
-        { AstNode *n = ast_novo(AST_ANIMA, linha_atual); n->u.anima.fps = (int)$3; $$ = n; }
+        { AstNode *n = ast_novo(AST_ANIMA, 0); n->linha = linha_atual;
+          n->u.anima.fps = (int)$3; $$ = n; }
   | MOVE IDENT PARA '(' expressao ',' expressao ')' EM expressao SEGUNDOS ';'
-        { AstNode *n = ast_novo(AST_MOVE, linha_atual);
+        { AstNode *n = ast_novo(AST_MOVE, 0); n->linha = linha_atual;
           n->u.move.alvo = $2; n->u.move.x = $5; n->u.move.y = $7;
           n->u.move.segundos = $10; $$ = n; }
   | QUADRO lista_cmds FIM
-        { AstNode *n = ast_novo(AST_QUADRO, linha_atual);
+        { AstNode *n = ast_novo(AST_QUADRO, 0); n->linha = linha_atual;
           n->u.quadro.corpo = $2; $$ = n; }
   ;
 
 expressao: expr_logica { $$ = $1; } ;
 
 expr_logica:
-    expr_logica OU expr_logica   { $$ = ast_binop(OP_OR, $1, $3, linha_atual); }
-  | expr_logica E expr_logica    { $$ = ast_binop(OP_AND, $1, $3, linha_atual); }
+    expr_logica OU expr_logica   { $$ = ast_binop(OP_OR,  $1, $3, linha_atual); }
+  | expr_logica E  expr_logica   { $$ = ast_binop(OP_AND, $1, $3, linha_atual); }
   | NAO expr_logica              { $$ = ast_unop(OP_NOT, $2, linha_atual); }
   | expr_rel                     { $$ = $1; }
   ;
@@ -152,7 +166,7 @@ expr_fator:
     NUM                        { $$ = ast_num($1, linha_atual); }
   | IDENT                      { $$ = ast_ident($1, linha_atual); }
   | '(' expressao ')'          { $$ = $2; }
-  | '-' expr_fator %prec NAO   { $$ = ast_unop(OP_NOT, $2, linha_atual); }  /* unário */
+  | '-' expr_fator %prec UMINUS { $$ = ast_unop(OP_NEG, $2, linha_atual); }
   ;
 
 %%

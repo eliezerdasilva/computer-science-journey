@@ -1,237 +1,250 @@
-/* codegen.c */
+/* codegen.c — gera C, compila e executa (one-step) */
 #include "codegen.h"
-#include <gd.h>
-#include <gdfonts.h>
-#include <gif_lib.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 
-#define MAX_FRAMES 256
+/* ============ Helper: int RGB → "#RRGGBB" ============ */
+static const char *cor_para_str(int rgb) {
+    static char bufs[4][8];
+    static int idx = 0;
+    char *b = bufs[idx];
+    idx = (idx + 1) % 4;
+    snprintf(b, 8, "#%06X", rgb & 0xFFFFFF);
+    return b;
+}
 
-typedef struct { char *nome; double valor; } Variavel;
-static Variavel vars[128];
+/* ============ Estado do codegen ============ */
+static FILE *out;
 static int nvars = 0;
-static double var_get(const char *n) {
-    for (int i = 0; i < nvars; i++) if (strcmp(vars[i].nome, n) == 0) return vars[i].valor;
-    return 0;
-}
-static void var_set(const char *n, double v) {
-    for (int i = 0; i < nvars; i++) if (strcmp(vars[i].nome, n) == 0) { vars[i].valor = v; return; }
-    if (nvars < 128) { vars[nvars].nome = strdup(n); vars[nvars].valor = v; nvars++; }
-}
-
-/* Estado do canvas */
-static gdImagePtr canvas = NULL;
-static int largura = 0, altura = 0;
+static char *vars[128];
 static int fps = 10;
 static char *arquivo_saida = NULL;
-static int cor_bg = 0;
-static int **frames_rgb = NULL;   /* frames acumulados como RGB888 */
-static int nframes = 0;
 
-static int hex_para_int(const char *hex) {
-    int r, g, b;
-    sscanf(hex, "#%02x%02x%02x", &r, &g, &b);
-    return (r << 16) | (g << 8) | b;
-}
-static int cor_para_gd(int rgb) {
-    int r = (rgb >> 16) & 0xff, g = (rgb >> 8) & 0xff, b = rgb & 0xff;
-    return gdImageColorAllocate(canvas, r, g, b);
+static int var_idx(const char *n) {
+    for (int i = 0; i < nvars; i++)
+        if (strcmp(vars[i], n) == 0) return i;
+    vars[nvars] = strdup(n);
+    return nvars++;
 }
 
-static double eval(AstNode *n) {
-    if (!n) return 0;
+/* ============ Emissão de expressões ============ */
+static void emite_expr(AstNode *n) {
+    if (!n) { fprintf(out, "0"); return; }
     switch (n->tipo) {
-        case AST_NUM: return n->u.num;
-        case AST_IDENT: return var_get(n->u.ident);
+        case AST_NUM:
+            fprintf(out, "%.4f", n->u.num); break;
+        case AST_IDENT:
+            fprintf(out, "v[%d]", var_idx(n->u.ident)); break;
         case AST_BINOP: {
-            double a = eval(n->u.binop.esq), b = eval(n->u.binop.dir);
-            switch (n->u.binop.op) {
-                case OP_ADD: return a + b;
-                case OP_SUB: return a - b;
-                case OP_MUL: return a * b;
-                case OP_DIV: return (b != 0) ? a / b : 0;
-                case OP_MOD: return (b != 0) ? fmod(a, b) : 0;
-                case OP_EQ: return a == b;
-                case OP_NE: return a != b;
-                case OP_LT: return a < b;
-                case OP_GT: return a > b;
-                case OP_LE: return a <= b;
-                case OP_GE: return a >= b;
-                case OP_AND: return a && b;
-                case OP_OR: return a || b;
-                default: return 0;
+            OpTipo op = n->u.binop.op;
+            fprintf(out, "(");
+            emite_expr(n->u.binop.esq);
+            switch (op) {
+                case OP_ADD: fprintf(out, " + "); break;
+                case OP_SUB: fprintf(out, " - "); break;
+                case OP_MUL: fprintf(out, " * "); break;
+                case OP_DIV: fprintf(out, " / "); break;
+                case OP_MOD: fprintf(out, " %% "); break;
+                case OP_EQ:  fprintf(out, " == "); break;
+                case OP_NE:  fprintf(out, " != "); break;
+                case OP_LT:  fprintf(out, " < ");  break;
+                case OP_GT:  fprintf(out, " > ");  break;
+                case OP_LE:  fprintf(out, " <= "); break;
+                case OP_GE:  fprintf(out, " >= "); break;
+                case OP_AND: fprintf(out, " && "); break;
+                case OP_OR:  fprintf(out, " || "); break;
+                default:     fprintf(out, " /*op?*/ "); break;
             }
+            emite_expr(n->u.binop.dir);
+            fprintf(out, ")");
+            break;
         }
         case AST_UNOP:
-            if (n->u.unop.op == OP_NOT) return !eval(n->u.unop.operando);
-            return -eval(n->u.unop.operando);
-        default: return 0;
+            if (n->u.unop.op == OP_NEG) fprintf(out, "(-");
+            else                        fprintf(out, "(!");
+            emite_expr(n->u.unop.operando);
+            fprintf(out, ")");
+            break;
+        default:
+            fprintf(out, "0"); break;
     }
 }
 
-static void captura_frame(void) {
-    if (!canvas) return;
-    int w = gdImageSX(canvas), h = gdImageSY(canvas);
-    int *buf = malloc(w * h * sizeof(int));
-    if (!buf) return;
-    for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++) {
-            int c = gdImageGetPixel(canvas, x, y);
-            int r = gdImageRed(canvas, c);
-            int g = gdImageGreen(canvas, c);
-            int b = gdImageBlue(canvas, c);
-            buf[y*w + x] = (r << 16) | (g << 8) | b;
-        }
-    if (nframes < MAX_FRAMES) {
-        if (!frames_rgb) frames_rgb = malloc(MAX_FRAMES * sizeof(int*));
-        frames_rgb[nframes++] = buf;   /* atribuição direta, sem cast */
-    } else {
-        free(buf);
-    }
+/* ============ Emissão de comandos ============ */
+static void emite_cmd(AstNode *n);
+
+static void emite_bloco(AstNode *b) {
+    if (!b) return;
+    int cnt = (b->tipo == AST_PROGRAMA) ? b->u.programa.n : b->u.bloco.n;
+    AstNode **it = (b->tipo == AST_PROGRAMA) ? b->u.programa.itens : b->u.bloco.itens;
+    for (int i = 0; i < cnt; i++) emite_cmd(it[i]);
 }
 
-static int salva_png(const char *arq) {
-    FILE *f = fopen(arq, "wb");
-    if (!f) return 0;
-    gdImagePng(canvas, f);
-    fclose(f);
-    return 1;
-}
-
-/* Escrita de GIF animado usando giflib */
-static int salva_gif(const char *arq) {
-    int error = 0;
-    GifFileType *gif = EGifOpenFileName(arq, false, &error);
-    if (!gif) return 0;
-    int w = largura, h = altura;
-    ColorMapObject *cmap = GifMakeMapObject(256, NULL);
-    if (!cmap) { EGifCloseFile(gif, &error); return 0; }
-    for (int i = 0; i < 256; i++) { cmap->Colors[i].Red = i; cmap->Colors[i].Green = i; cmap->Colors[i].Blue = i; }
-    EGifPutScreenDesc(gif, w, h, 8, 0, cmap);
-    EGifPutImageDesc(gif, 0, 0, w, h, false, NULL);
-    /* Para simplificar, salvamos apenas o primeiro frame como GIF estático */
-    if (nframes > 0) {
-        GifByteType *linha = malloc(w);
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                int rgb = frames_rgb[0][y*w + x];
-                int r = (rgb >> 16) & 0xff, g = (rgb >> 8) & 0xff, b = rgb & 0xff;
-                linha[x] = (GifPixelType)((r + g + b) / 3);
-            }
-            EGifPutLine(gif, linha, w);
-        }
-        free(linha);
-    }
-    EGifCloseFile(gif, &error);
-    GifFreeMapObject(cmap);
-    return 1;
-}
-
-static void executa_no(AstNode *n) {
+static void emite_cmd(AstNode *n) {
     if (!n) return;
     switch (n->tipo) {
-        case AST_PROGRAMA:
-            for (int i = 0; i < n->u.programa.n; i++) executa_no(n->u.programa.itens[i]);
+        case AST_TELA:
+            fprintf(out, "  largura = (int)("); emite_expr(n->u.tela.w); fprintf(out, ");\n");
+            fprintf(out, "  altura  = (int)("); emite_expr(n->u.tela.h); fprintf(out, ");\n");
+            fprintf(out, "  if (canvas) gdImageDestroy(canvas);\n");
+            fprintf(out, "  canvas = gdImageCreateTrueColor(largura, altura);\n");
+            fprintf(out, "  { int bg = cor_gd(\"%s\");\n", cor_para_str(n->u.tela.cor));
+            fprintf(out, "    gdImageFilledRectangle(canvas, 0,0, largura-1, altura-1, bg); }\n");
             break;
-        case AST_BLOCO:
-            for (int i = 0; i < n->u.bloco.n; i++) executa_no(n->u.bloco.itens[i]);
+        case AST_COR_FUNDO:
+            fprintf(out, "  { int bg = cor_gd(\"%s\");\n", cor_para_str(n->u.cor_fundo.cor));
+            fprintf(out, "    gdImageFilledRectangle(canvas, 0,0, largura-1, altura-1, bg); }\n");
             break;
-        case AST_TELA: {
-            largura = (int)eval(n->u.tela.w);
-            altura = (int)eval(n->u.tela.h);
-            cor_bg = hex_para_int(n->u.tela.cor->u.cor);
-            if (canvas) gdImageDestroy(canvas);
-            canvas = gdImageCreateTrueColor(largura, altura);
-            int bg = gdImageColorAllocate(canvas, (cor_bg>>16)&0xff, (cor_bg>>8)&0xff, cor_bg&0xff);
-            gdImageFilledRectangle(canvas, 0, 0, largura-1, altura-1, bg);
+        case AST_PIXEL:
+            fprintf(out, "  gdImageSetPixel(canvas, (int)(");
+            emite_expr(n->u.pixel.x); fprintf(out, "), (int)(");
+            emite_expr(n->u.pixel.y);
+            fprintf(out, "), cor_gd(\"%s\"));\n", cor_para_str(n->u.pixel.cor));
             break;
-        }
-        case AST_PIXEL: {
-            int x = (int)eval(n->u.pixel.x), y = (int)eval(n->u.pixel.y);
-            int c = cor_para_gd(hex_para_int(n->u.pixel.cor->u.cor));
-            gdImageSetPixel(canvas, x, y, c);
+        case AST_LINHA:
+            fprintf(out, "  gdImageLine(canvas, (int)(");
+            emite_expr(n->u.linha.x1); fprintf(out, "), (int)(");
+            emite_expr(n->u.linha.y1); fprintf(out, "), (int)(");
+            emite_expr(n->u.linha.x2); fprintf(out, "), (int)(");
+            emite_expr(n->u.linha.y2);
+            fprintf(out, "), cor_gd(\"%s\"));\n", cor_para_str(n->u.linha.cor));
             break;
-        }
-        case AST_LINHA: {
-            int x1 = (int)eval(n->u.linha.x1), y1 = (int)eval(n->u.linha.y1);
-            int x2 = (int)eval(n->u.linha.x2), y2 = (int)eval(n->u.linha.y2);
-            int c = cor_para_gd(hex_para_int(n->u.linha.cor->u.cor));
-            gdImageLine(canvas, x1, y1, x2, y2, c);
+        case AST_RETANGULO:
+            fprintf(out, "  { int _x = (int)("); emite_expr(n->u.retangulo.x);
+            fprintf(out, "), _y = (int)("); emite_expr(n->u.retangulo.y);
+            fprintf(out, "), _w = (int)("); emite_expr(n->u.retangulo.w);
+            fprintf(out, "), _h = (int)("); emite_expr(n->u.retangulo.h);
+            fprintf(out, ");\n    gdImageFilledRectangle(canvas, _x,_y, _x+_w-1, _y+_h-1, cor_gd(\"%s\")); }\n",
+                    cor_para_str(n->u.retangulo.cor));
             break;
-        }
-        case AST_RETANGULO: {
-            int x = (int)eval(n->u.retangulo.x), y = (int)eval(n->u.retangulo.y);
-            int w = (int)eval(n->u.retangulo.w), h = (int)eval(n->u.retangulo.h);
-            int c = cor_para_gd(hex_para_int(n->u.retangulo.cor->u.cor));
-            gdImageFilledRectangle(canvas, x, y, x+w, y+h, c);
+        case AST_CIRCULO:
+            fprintf(out, "  { int _cx = (int)("); emite_expr(n->u.circulo.cx);
+            fprintf(out, "), _cy = (int)("); emite_expr(n->u.circulo.cy);
+            fprintf(out, "), _r = (int)("); emite_expr(n->u.circulo.r);
+            fprintf(out, ");\n    gdImageFilledEllipse(canvas, _cx,_cy, 2*_r, 2*_r, cor_gd(\"%s\")); }\n",
+                    cor_para_str(n->u.circulo.cor));
             break;
-        }
-        case AST_CIRCULO: {
-            int cx = (int)eval(n->u.circulo.cx), cy = (int)eval(n->u.circulo.cy);
-            int r = (int)eval(n->u.circulo.r);
-            int c = cor_para_gd(hex_para_int(n->u.circulo.cor->u.cor));
-            gdImageFilledEllipse(canvas, cx, cy, r*2, r*2, c);
-            break;
-        }
-        case AST_TEXTO: {
-            int x = (int)eval(n->u.texto.x), y = (int)eval(n->u.texto.y);
-            int c = cor_para_gd(hex_para_int(n->u.texto.cor->u.cor));
-            gdImageString(canvas, gdFontSmall, x, y, (unsigned char*)n->u.texto.texto, c);
-            break;
-        }
-        case AST_COR_FUNDO: {
-            cor_bg = hex_para_int(n->u.cor_fundo.cor->u.cor);
-            int c = gdImageColorAllocate(canvas, (cor_bg>>16)&0xff, (cor_bg>>8)&0xff, cor_bg&0xff);
-            gdImageFilledRectangle(canvas, 0, 0, largura-1, altura-1, c);
-            break;
-        }
-        case AST_ANIMA:
-            fps = n->u.anima.fps;
+        case AST_TEXTO:
+            fprintf(out, "  gdImageString(canvas, gdFontSmall, (int)(");
+            emite_expr(n->u.texto.x); fprintf(out, "), (int)(");
+            emite_expr(n->u.texto.y);
+            fprintf(out, "), (unsigned char*)\"%s\", cor_gd(\"%s\"));\n",
+                    n->u.texto.texto, cor_para_str(n->u.texto.cor));
             break;
         case AST_VAR:
-            var_set(n->u.var.nome, eval(n->u.var.expr));
+            fprintf(out, "  v[%d] = (double)(", var_idx(n->u.var.nome));
+            emite_expr(n->u.var.expr);
+            fprintf(out, ");\n");
             break;
         case AST_ATRIBUICAO:
-            var_set(n->u.atrib.nome, eval(n->u.atrib.expr));
+            fprintf(out, "  v[%d] = (double)(", var_idx(n->u.atrib.nome));
+            emite_expr(n->u.atrib.expr);
+            fprintf(out, ");\n");
             break;
         case AST_SE:
-            if (eval(n->u.se.cond) != 0) executa_no(n->u.se.entao);
-            else if (n->u.se.senao) executa_no(n->u.se.senao);
+            fprintf(out, "  if ("); emite_expr(n->u.se.cond); fprintf(out, ") {\n");
+            emite_bloco(n->u.se.entao);
+            fprintf(out, "  }");
+            if (n->u.se.senao) {
+                fprintf(out, " else {\n");
+                emite_bloco(n->u.se.senao);
+                fprintf(out, "  }");
+            }
+            fprintf(out, "\n");
             break;
         case AST_REPETE: {
-            int vezes = (int)eval(n->u.repete.vezes);
-            for (int i = 0; i < vezes; i++) executa_no(n->u.repete.corpo);
+            static int rep_counter = 0;
+            int rid = rep_counter++;
+            fprintf(out, "  for (int __r%d = 0; __r%d < (int)(", rid, rid);
+            emite_expr(n->u.repete.vezes);
+            fprintf(out, "); __r%d++) {\n", rid);
+            emite_bloco(n->u.repete.corpo);
+            fprintf(out, "  }\n");
             break;
         }
         case AST_QUADRO:
-            executa_no(n->u.quadro.corpo);
-            captura_frame();
+            emite_bloco(n->u.quadro.corpo);
             break;
-        case AST_MOVE: {
-            double x = eval(n->u.move.x), y = eval(n->u.move.y);
-            /* interpolação simples: atualiza variável alvo */
-            var_set(n->u.move.alvo, x);
-            (void)y;
+        case AST_ANIMA:
+            fps = n->u.anima.fps;
             break;
-        }
+        case AST_MOVE:
+            fprintf(out, "  v[%d] = (double)(", var_idx(n->u.move.alvo));
+            emite_expr(n->u.move.x);
+            fprintf(out, ");\n");
+            break;
         case AST_SALVA:
+            free(arquivo_saida);
             arquivo_saida = strdup(n->u.salva.arquivo);
             break;
         default: break;
     }
 }
 
+/* ============ Pipeline one-step ============ */
 int executar_programa(AstNode *raiz) {
-    executa_no(raiz);
-    if (!canvas) { fprintf(stderr, "Nenhum canvas criado (falta TELA).\n"); return 0; }
-    if (!arquivo_saida) arquivo_saida = strdup("saida.png");
-    int ok = 0;
-    if (strstr(arquivo_saida, ".gif") && nframes > 0) ok = salva_gif(arquivo_saida);
-    else ok = salva_png(arquivo_saida);
-    if (ok) printf("Saída gerada: %s\n", arquivo_saida);
-    else fprintf(stderr, "Falha ao salvar %s\n", arquivo_saida);
-    return ok;
+    const char *caminho_c   = "saida_gerada.c";
+    const char *caminho_bin = "saida_gerada";
+
+    /* ETAPA 1 — cria e abre saida_gerada.c */
+    out = fopen(caminho_c, "w");
+    if (!out) { perror("fopen saida_gerada.c"); return 0; }
+
+    /* ETAPA 2 — cabeçalho do C gerado */
+    fprintf(out, "#include <gd.h>\n#include <gdfonts.h>\n"
+                 "#include <stdio.h>\n#include <stdlib.h>\n"
+                 "#include <string.h>\n#include <math.h>\n\n");
+    fprintf(out, "static gdImagePtr canvas = NULL;\n");
+    fprintf(out, "static int largura = 0, altura = 0;\n");
+    fprintf(out, "static double v[256];\n\n");
+    fprintf(out,
+        "static int cor_gd(const char *h) {\n"
+        "    int r=0,g=0,b=0; sscanf(h+1, \"%%02x%%02x%%02x\", &r,&g,&b);\n"
+        "    return gdImageColorAllocate(canvas, r, g, b);\n"
+        "}\n\n");
+    fprintf(out, "int main(void) {\n");
+
+    /* ETAPA 3 — traduz a AST para C */
+    emite_bloco(raiz);
+
+    /* ETAPA 4 — fecha o main() e o arquivo */
+    const char *saida = arquivo_saida ? arquivo_saida : "saida.png";
+    fprintf(out, "  if (!canvas) { fprintf(stderr, \"Nenhum canvas.\\n\"); return 1; }\n");
+    fprintf(out, "  { FILE *f = fopen(\"%s\", \"wb\");\n", saida);
+    fprintf(out, "    if (!f) { perror(\"fopen\"); return 1; }\n");
+    fprintf(out, "    gdImagePng(canvas, f); fclose(f); }\n");
+    fprintf(out, "  gdImageDestroy(canvas);\n");
+    fprintf(out, "  printf(\"Imagem salva em %s\\n\");\n", saida);
+    fprintf(out, "  return 0;\n}\n");
+    fclose(out);
+
+    /* ETAPA 5 — compila saida_gerada.c → saida_gerada */
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd),
+             "gcc -O2 -o %s %s -lgd -lm", caminho_bin, caminho_c);
+    int rc = system(cmd);
+    if (rc != 0) {
+        fprintf(stderr, "Falha ao compilar %s (rc=%d).\n", caminho_c, rc);
+        return 0;
+    }
+
+    /* ETAPA 6 — executa saida_gerada → gera PNG */
+    snprintf(cmd, sizeof(cmd), "./%s", caminho_bin);
+    rc = system(cmd);
+    if (rc != 0) {
+        fprintf(stderr, "Falha ao executar %s (rc=%d).\n", caminho_bin, rc);
+        return 0;
+    }
+
+    /* PRESERVA saida_gerada.c e saida_gerada para inspeção/execução manual.
+       Não chamamos remove(). */
+
+    /* Limpeza de estado interno */
+    for (int i = 0; i < nvars; i++) free(vars[i]);
+    nvars = 0;
+    free(arquivo_saida);
+    arquivo_saida = NULL;
+
+    return 1;
 }

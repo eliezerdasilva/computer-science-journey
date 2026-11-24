@@ -1,0 +1,11 @@
+TELA 100, 100, #FFFFFF;
+VAR x = 10;
+VAR y = 10;
+REPETE 5 VEZES
+    RETANGULO x, y, 10, 10, #FFA500;
+    x = x + 15;
+    y = y + 15;
+FIM
+COR_FUNDO #000000;
+CIRCULO 50, 50, 20, #FF0000;
+SALVA "teste.png";
