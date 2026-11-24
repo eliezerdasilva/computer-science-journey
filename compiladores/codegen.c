@@ -216,6 +216,11 @@ int executar_programa(AstNode *raiz) {
     fprintf(out, "    gdImagePng(canvas, f); fclose(f); }\n");
     fprintf(out, "  gdImageDestroy(canvas);\n");
     fprintf(out, "  printf(\"Imagem salva em %s\\n\");\n", saida);
+
+    /* ↓↓↓ ADICIONE ESTA LINHA ↓↓↓ */
+    fprintf(out, "  system(\"xdg-open %s &\");\n", saida);
+    /* ↑↑↑ FIM ↑↑↑ */
+
     fprintf(out, "  return 0;\n}\n");
     fclose(out);
 
