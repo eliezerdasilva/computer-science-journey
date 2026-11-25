@@ -1,0 +1,7 @@
+TELA 200, 200, #000000;
+VAR i = 0;
+REPETE 10 VEZES
+    RETANGULO i * 20, i * 20, 15, 15, #FFAA00;
+    i = i + 1;
+FIM
+SALVA "loop.png";
